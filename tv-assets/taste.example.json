@@ -1,0 +1,21 @@
+{
+  "profile_version": "1.0",
+  "one_sentence_taste": "Cerebral sci-fi and twisty mysteries, warm grounded dramas, and Indian storytelling.",
+  "taste_clusters": [
+    {"name": "cerebral_mystery_psychological", "strength": "strong", "themes": ["twists", "unreliable narrators"]},
+    {"name": "warm_life_affirming_drama", "strength": "strong", "themes": ["found family", "kindness"]}
+  ],
+  "movies_watched": [
+    {"title": "Interstellar", "sentiment": "explicit_positive"},
+    {"title": "Arrival", "sentiment": "likely_positive"},
+    {"title": "Some Film", "sentiment": "watched_reaction_unknown"}
+  ],
+  "series_watched": [
+    {"title": "Mr. Robot", "sentiment": "explicit_positive"},
+    {"title": "Ted Lasso", "sentiment": "positive_supported_by_conversation"}
+  ],
+  "watchlist_or_considered": [
+    {"title": "Dark", "type": "series"},
+    {"title": "Drishyam", "type": "movie"}
+  ]
+}

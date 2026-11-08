@@ -1,0 +1,21 @@
+# Private values and media stay on the Mac (see "What's not in this repo" in README.md).
+*.key
+*.keystore
+*.jks
+deploy.conf
+dumbtv.conf
+home.conf
+lightcam.conf
+tv-serial.txt
+tv-id.json
+taste.json
+weather.txt
+report/
+cache/
+build/
+tv-assets/tv/pool/
+tv-assets/tools/cutout
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

@@ -1,0 +1,13 @@
+# My Favourites lineup. One character per line:
+#   file | title | app package | link (or -) | row | centre x | bottom | height | glow colour
+# row: back or front. Centre x, bottom and height are fractions of the screen (bottom > 1 runs
+# the legs off the screen). Images are in characters/, scenes in scenes/ (same file name, .png).
+
+thor | Thor: Ragnarok | in.startv.hotstar | - | back | 0.150 | 0.98 | 0.60 | #F2A33A
+captain-america | Captain America: The Winter Soldier | in.startv.hotstar | - | back | 0.470 | 1.00 | 0.64 | #4A7BD8
+lanterns | Lanterns | in.startv.hotstar | - | back | 0.800 | 1.06 | 0.70 | #3FD46B
+black-widow | Black Widow | in.startv.hotstar | - | front | 0.075 | 1.06 | 0.46 | #C9384A
+iron-man | Iron Man | in.startv.hotstar | - | front | 0.275 | 1.06 | 0.48 | #E8423F
+spider-man | Spider-Man: No Way Home | com.netflix.ninja | - | front | 0.520 | 1.08 | 0.50 | #E23B3B
+harry-potter | Harry Potter and the Deathly Hallows | in.startv.hotstar | - | front | 0.710 | 1.18 | 0.66 | #D9A441
+ted-lasso | Ted Lasso | com.apple.atve.amazon.appletv | https://tv.apple.com/in/show/ted-lasso/umc.cmc.vtoh0mn0xn7t3c643xqonfzy | front | 0.905 | 1.16 | 0.64 | #3D6FE0

@@ -1,0 +1,6 @@
+# Copy to deploy.conf (git-ignored) and fill in your own addresses.
+# The TV: Settings > My Fire TV > Developer options > ADB debugging on; its IP is under About > Network.
+ANDROID_SERIAL=192.168.1.20:5555
+# The phone that films the TV (only for lightcam/deploy.sh): Developer options > Wireless debugging
+# shows its IP and port, which changes whenever debugging restarts. Pair once with `adb pair`.
+PHONE_SERIAL=192.168.1.21:37000

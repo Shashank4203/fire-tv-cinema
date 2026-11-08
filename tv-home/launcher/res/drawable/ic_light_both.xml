@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Lights: sound and video sync. A screen with a sound wave on it. -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" android:pathData="M3,5.5 H21 V16.5 H3 Z M8,20 H16 M7.5,10 V12 M10,8.5 V13.5 M12.5,9.5 V12.5 M15,8.5 V13.5 M17,10 V12"/>
+</vector>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Sound as a gradual pulse: rising and easing back. A smooth wave. -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" android:pathData="M3,15.5 C5.5,15.5 6,8 8.5,8 C11,8 11.5,15.5 14,15.5 C16.5,15.5 17,8 19.5,8 C20.3,8 20.8,8.7 21.2,9.5"/>
+</vector>

@@ -1,0 +1,11 @@
+# The home screen dock, one app per line, left to right:
+#   package | name | glow colour | quote ~ source || quote ~ source ...
+# Several quotes for one app rotate each time you come home. Edit, then push to the TV:
+#   adb push dock.txt /sdcard/Android/data/tv.dumbtv.home/files/cinema/
+
+com.netflix.ninja | Netflix | #E50914 | Love is the one thing that transcends time and space. ~ Interstellar || Hello, friend. ~ Mr. Robot
+com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity | Prime Video | #1A98FF | Control is an illusion. ~ Mr. Robot || Mankind was born on Earth. It was never meant to die here. ~ Interstellar
+in.startv.hotstar | JioHotstar | #5B6CFF | Be curious, not judgmental. ~ Ted Lasso || Do not go gentle into that good night. ~ Interstellar
+com.amazon.firetv.youtube | YouTube | #FF0033 | Newton's third law. You've got to leave something behind. ~ Interstellar || Are you a one or a zero? ~ Mr. Robot
+com.apple.atve.amazon.appletv | Apple TV | #C9CED6 | Believe. ~ Ted Lasso || Be a goldfish. ~ Ted Lasso || It's the hope that kills you. ~ Ted Lasso
+com.spotify.tv.android | Spotify | #1DB954 | Rage, rage against the dying of the light. ~ Interstellar || It's not possible. No, it's necessary. ~ Interstellar

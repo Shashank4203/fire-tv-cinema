@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Checks every 30 minutes: the day's refresh of the TV's Suggestions, moods, wallpapers and
+     quotes runs at the first check after 6 pm, and if the TV was off then, the push is retried at
+     each check until it's on. Checks with nothing to do exit at once. Install:  cp this file ~/Library/LaunchAgents/ && launchctl load it. Everything it touches lives in
+     ~/tv-assets, outside Documents: macOS does not let background jobs into Documents. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shashank.tv-favourites</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/anaconda3/bin/python3</string>
+        <string>-I</string>
+        <string>/Users/YOUR_USER/tv-assets/tools/refresh_pool.py</string>
+        <string>--auto</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/tv-assets/cache/refresh.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/tv-assets/cache/refresh.log</string>
+</dict>
+</plist>
