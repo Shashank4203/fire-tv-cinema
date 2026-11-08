@@ -69,8 +69,7 @@ import java.util.Map;
  * Lining up: the TV's Options › "Line up the light camera" shows full white, then full black,
  * and tells the phone which is on screen ("calib white", "calib black", "calib done" on UDP
  * {@link #COMMANDS}). Whatever changed between the two is the screen, at any angle; it is saved in
- * files/mask.bin, which follows the screen if the phone is nudged later ({@link #follow}). While the
- * screen is white the exposure is set so white reads well below clipping,
+ * files/mask.bin. While the screen is white the exposure is set so white reads well below clipping,
  * where the camera's readings keep in step with the light. Then patches of pure colour on the
  * screen ("cpatch i rrggbb", "colour done") match the camera's colours to the TV's, and the strip's
  * own colours on the wall around it ("spatch i rrggbb", "strip done", answered "lightcam strip …")
@@ -151,18 +150,8 @@ public final class Main extends Activity {
     private int maskW, maskH, maskPct;
     /** The screen's outline's bounding box, in the same pixels as the mask. */
     private Rect maskBox;
-    /** The outline pixel by pixel (1: screen), as saved in mask.bin, and each of the mask's pixels' share of the screen. */
-    private byte[] maskBits;
+    /** Each of the mask's pixels' share of the screen ({@link #shares}). */
     private float[] area;
-    /**
-     * Following the screen ({@link #follow}): the picture's running average on the mask's grid
-     * (every other pixel each way), the grid's cells just inside and just outside the outline, and
-     * the shift that has looked better, how many times running.
-     */
-    private float[] seen;
-    private int[] inner, outer;
-    private long followedAt;
-    private int followFrames, moveX, moveY, moveSeen;
     /** A photo is being taken or read; since when. */
     private boolean snapping;
     private long snapSince;
@@ -574,7 +563,6 @@ public final class Main extends Activity {
         }
         if (cpatch >= 0) measurePatch(img, now);
         if (spatch >= 0) measureWall(img, now);
-        if (cpatch < 0 && spatch < 0) follow(img, now);
         if (now - sentAt < SEND_MS) return;
         sentAt = now;
         colour(img, now);
@@ -1386,7 +1374,6 @@ public final class Main extends Activity {
             }
             maskBox = s.length == 0 ? null : new Rect(x0, y0, Math.min(w, x1), Math.min(h, y1));
             maskPct = Math.round(100f * all / (w * h));
-            maskBits = bits;
             area = shares(bits, w, s);
             if (area != null) {
                 float[] sorted = area.clone();
@@ -1394,8 +1381,6 @@ public final class Main extends Activity {
                 Log.i(TAG, String.format(Locale.ROOT, "outline: %d pixels, each counting %.1f to %.1f times the mean for the angle",
                         s.length, sorted[sorted.length / 10], sorted[sorted.length * 9 / 10]));
             }
-            inner = outer = null;
-            moveSeen = 0;
         } catch (IOException e) {
             Log.w(TAG, "mask.bin: " + e);
         }
@@ -1443,142 +1428,6 @@ public final class Main extends Activity {
         }
         for (int k = 0; k < out.length; k++) out[k] *= out.length / sum;
         return out;
-    }
-
-    /**
-     * Keeps the outline on the screen if the phone has been nudged. The picture's running average
-     * (some ten seconds) is light on the screen and dark on the frame round it, so every five
-     * seconds the outline is tried shifted by up to 20 pixels each way: when another place shows the
-     * screen's edge clearly better six times running (half a minute), the phone has moved and the
-     * outline goes there, saved. Only a shift: a phone turned a lot needs lining up again.
-     */
-    private void follow(Image img, long now) {
-        int w = img.getWidth(), h = img.getHeight(), gw = w / 2, gh = h / 2;
-        if (mask == null || maskW != w || maskH != h || maskBits == null) return;
-        ByteBuffer yb = img.getPlanes()[0].getBuffer();
-        int yRow = img.getPlanes()[0].getRowStride();
-        if (seen == null || seen.length != gw * gh) {
-            seen = new float[gw * gh];
-            for (int gy = 0; gy < gh; gy++) for (int gx = 0; gx < gw; gx++) seen[gy * gw + gx] = yb.get(2 * gy * yRow + 2 * gx) & 0xFF;
-        }
-        if (++followFrames % 3 == 0) { // ten times a second is plenty for a ten-second average
-            for (int gy = 0; gy < gh; gy++) {
-                int row = 2 * gy * yRow;
-                for (int gx = 0; gx < gw; gx++) seen[gy * gw + gx] += ((yb.get(row + 2 * gx) & 0xFF) - seen[gy * gw + gx]) * 0.01f;
-            }
-        }
-        if (now - followedAt < 5000) return;
-        followedAt = now;
-        if (inner == null) bands(gw, gh);
-        double here = edge(0, 0, gw, gh), best = here;
-        int bx = 0, by = 0;
-        for (int dy = -10; dy <= 10; dy++) {
-            for (int dx = -10; dx <= 10; dx++) {
-                if (dx == 0 && dy == 0) continue;
-                double e = edge(dx, dy, gw, gh);
-                if (e > best) {
-                    best = e;
-                    bx = dx;
-                    by = dy;
-                }
-            }
-        }
-        // Here is right, or the picture too dark to tell: in a dark scene the strip's glow beside the
-        // TV can be lighter than the screen, and the outline mustn't wander onto it.
-        if (best < Math.max(8, here * 1.2 + 2) || Math.abs(bx) + Math.abs(by) < 2) {
-            moveSeen = 0;
-            return;
-        }
-        if (moveSeen > 0 && Math.abs(bx - moveX) <= 1 && Math.abs(by - moveY) <= 1) {
-            moveSeen++;
-        } else {
-            moveX = bx;
-            moveY = by;
-            moveSeen = 1;
-        }
-        if (moveSeen < 6) return;
-        Log.i(TAG, String.format(Locale.ROOT, "the phone has moved: the outline follows the screen, %d px across and %d down"
-                + " (its edge %.0f there against %.0f where it was)", 2 * bx, 2 * by, best, here));
-        byte[] moved = new byte[maskBits.length];
-        for (int y = 0; y < h; y++) {
-            int from = y - 2 * by;
-            if (from < 0 || from >= h) continue;
-            for (int x = 0; x < w; x++) {
-                int fx = x - 2 * bx;
-                if (fx >= 0 && fx < w) moved[y * w + x] = maskBits[from * w + fx];
-            }
-        }
-        boolean[] in = new boolean[moved.length];
-        for (int i = 0; i < in.length; i++) in[i] = moved[i] != 0;
-        saveMask(in, w, h);
-        loadMask(w, h);
-    }
-
-    /** The grid's cells inside the outline within two of its edge, and outside it three to five away (the TV's frame). */
-    private void bands(int gw, int gh) {
-        boolean[] in = new boolean[gw * gh];
-        for (int s : mask) in[((s >>> 16) / 2) * gw + (s & 0xFFFF) / 2] = true;
-        boolean[] out = new boolean[in.length];
-        for (int i = 0; i < in.length; i++) out[i] = !in[i];
-        int[] toOut = chessboard(out, gw, gh), toIn = chessboard(in, gw, gh);
-        int ni = 0, no = 0;
-        for (int i = 0; i < in.length; i++) {
-            if (in[i] && toOut[i] <= 2) ni++;
-            if (!in[i] && toIn[i] >= 3 && toIn[i] <= 5) no++;
-        }
-        inner = new int[ni];
-        outer = new int[no];
-        for (int i = 0, a = 0, b = 0; i < in.length; i++) {
-            if (in[i] && toOut[i] <= 2) inner[a++] = (i % gw) | (i / gw) << 16;
-            if (!in[i] && toIn[i] >= 3 && toIn[i] <= 5) outer[b++] = (i % gw) | (i / gw) << 16;
-        }
-    }
-
-    /** How much lighter the running average is just inside the outline than just outside it, the outline shifted by dx, dy cells. */
-    private double edge(int dx, int dy, int gw, int gh) {
-        return meanSeen(inner, dx, dy, gw, gh) - meanSeen(outer, dx, dy, gw, gh);
-    }
-
-    private double meanSeen(int[] cells, int dx, int dy, int gw, int gh) {
-        double sum = 0;
-        int n = 0;
-        for (int c : cells) {
-            int x = (c & 0xFFFF) + dx, y = (c >>> 16) + dy;
-            if (x < 0 || y < 0 || x >= gw || y >= gh) continue;
-            sum += seen[y * gw + x];
-            n++;
-        }
-        return n == 0 ? 0 : sum / n;
-    }
-
-    /** Each cell's distance, in cells each way (diagonals count one), to the nearest marked cell. */
-    private static int[] chessboard(boolean[] marked, int gw, int gh) {
-        int far = gw + gh;
-        int[] d = new int[marked.length];
-        for (int i = 0; i < d.length; i++) d[i] = marked[i] ? 0 : far;
-        for (int y = 0; y < gh; y++) {
-            for (int x = 0; x < gw; x++) {
-                int i = y * gw + x;
-                if (x > 0) d[i] = Math.min(d[i], d[i - 1] + 1);
-                if (y > 0) {
-                    d[i] = Math.min(d[i], d[i - gw] + 1);
-                    if (x > 0) d[i] = Math.min(d[i], d[i - gw - 1] + 1);
-                    if (x < gw - 1) d[i] = Math.min(d[i], d[i - gw + 1] + 1);
-                }
-            }
-        }
-        for (int y = gh - 1; y >= 0; y--) {
-            for (int x = gw - 1; x >= 0; x--) {
-                int i = y * gw + x;
-                if (x < gw - 1) d[i] = Math.min(d[i], d[i + 1] + 1);
-                if (y < gh - 1) {
-                    d[i] = Math.min(d[i], d[i + gw] + 1);
-                    if (x < gw - 1) d[i] = Math.min(d[i], d[i + gw + 1] + 1);
-                    if (x > 0) d[i] = Math.min(d[i], d[i + gw - 1] + 1);
-                }
-            }
-        }
-        return d;
     }
 
     private int[] cropSamples(int w, int h) {

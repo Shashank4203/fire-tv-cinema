@@ -106,9 +106,10 @@ patterns play hidden behind it. It takes about 65 s:
    primaries.
 3. 17 strip colours, 2.2 s each because of the fade. The phone films the wall around the TV and sends back the data for `StripModel`.
 
-If the phone gets nudged, `Main.follow()` re-centres the outline. Every 5 s it tries the outline
-shifted by ±20 px, and moves it once one shift wins 6 times in a row. Each pixel is weighted by how
-much of the screen it covers, so pixels on the far side count about 5× more than those on the near side.
+The outline stays where lining up put it. If the phone gets nudged, line it up again from the light
+menu. (An automatic follow was tried and removed: black bars on letterboxed video look just like
+the TV's dark frame, so it kept drifting onto the picture.) Each pixel is weighted by how much of
+the screen it covers, so pixels on the far side count about 5× more than those on the near side.
 
 ### Sound
 
