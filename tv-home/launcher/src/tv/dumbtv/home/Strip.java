@@ -31,6 +31,14 @@ import java.util.concurrent.atomic.AtomicReference;
 final class Strip {
     private static final String TAG = "lights";
     private static final int PORT = 5577;
+    /**
+     * How long to wait for the controller. On a congested Wi-Fi its replies have taken over 2 s
+     * (pings 0.15-2 s, 2026-11-15), and with 1.5 s to connect and 3 s for the heartbeat the TV kept
+     * dropping a strip that was still there. Probes during a search wait less, as there are 254.
+     */
+    private static final int KNOWN_MS = 4000, SEARCH_MS = 2000, SILENT_MS = 8000;
+    /** An unanswered status question is asked again after this, in a pause of QUIET_MS (see healthy). */
+    private static final int ASK_AGAIN_MS = 3000, QUIET_MS = 700;
 
     private final SharedPreferences prefs;
     private Socket socket;
@@ -41,6 +49,10 @@ final class Strip {
     private long rememberedAt;
     /** The heartbeat: when we last asked the controller for its status, and when it last said anything. */
     private long queriedAt, answeredAt;
+    /** The heartbeat's second try: no colours go out until quietUntil; the question goes at reaskAt. */
+    private long quietUntil, reaskAt;
+    /** How long this connection waits to connect or for a status reply (KNOWN_MS or SEARCH_MS). */
+    private int patience = KNOWN_MS;
     /** The last colour we sent, exactly (prefs "sent" has it to within two seconds). */
     private int lastSent = -1;
 
@@ -56,9 +68,9 @@ final class Strip {
     boolean take() {
         if (socket != null) return true;
         String host = prefs.getString("host", null);
-        if (host == null || !open(host)) {
+        if (host == null || !open(host, KNOWN_MS)) {
             host = find();
-            if (host == null || !open(host)) return false;
+            if (host == null || !open(host, KNOWN_MS)) return false;
             prefs.edit().putString("host", host).apply();
         }
         byte[] now = status();
@@ -98,9 +110,15 @@ final class Strip {
 
     /**
      * The heartbeat, called with every frame and never blocking: every 5 s it asks the controller
-     * for its status, and false means it hasn't answered for 3 s. A strip that drops off the Wi-Fi
+     * for its status, and false means it hasn't answered for SILENT_MS. A strip that drops off the Wi-Fi
      * leaves a dead connection that takes our colours without an error for minutes, the strip
      * frozen meanwhile; this notices within seconds.
+     *
+     * The controller ignores a command that arrives straight after a burst of colours, and with a
+     * colour every 50 ms the status question sometimes is that command: the TV then dropped and
+     * reconnected a strip that was fine, every 25 s or so (2026-11-15). So a question still
+     * unanswered after ASK_AGAIN_MS is asked again in a short pause with no colours, and only
+     * silence after that counts.
      */
     boolean healthy() {
         if (socket == null) return false;
@@ -111,9 +129,21 @@ final class Strip {
         } catch (IOException e) {
             return false;
         }
-        if (queriedAt > answeredAt && now - queriedAt > 3000) return false;
-        if (now - queriedAt > 5000 && answeredAt >= queriedAt) {
+        if (queriedAt > answeredAt) {
+            if (now - queriedAt > SILENT_MS) return false;
+            if (reaskAt == 0 && quietUntil < queriedAt && now - queriedAt > ASK_AGAIN_MS) {
+                quietUntil = now + QUIET_MS;
+                reaskAt = now + QUIET_MS / 2; // half the pause before the question, half after
+            } else if (reaskAt != 0 && now >= reaskAt) {
+                reaskAt = 0;
+                Log.i(TAG, "the strip didn't answer mid-stream: asking again in a pause");
+                return send(0x81, 0x8A, 0x8B);
+            }
+            return true;
+        }
+        if (now - queriedAt > 5000) {
             queriedAt = now;
+            reaskAt = 0;
             return send(0x81, 0x8A, 0x8B);
         }
         return true;
@@ -124,7 +154,7 @@ final class Strip {
         boolean opened = false;
         if (socket == null) {
             String host = prefs.getString("host", null);
-            if (host == null || !open(host)) return;
+            if (host == null || !open(host, KNOWN_MS)) return;
             opened = true;
         }
         send(0x71, on ? 0x23 : 0x24, 0x0F);
@@ -148,6 +178,7 @@ final class Strip {
     boolean colour(int r, int g, int b) {
         if (r == 0 && g == 0 && b == 0) r = g = b = 1;
         long now = System.currentTimeMillis();
+        if (now < quietUntil) return socket != null; // the heartbeat's pause: skipped, not failed
         lastSent = r << 16 | g << 8 | b;
         if (now - rememberedAt > 2000) { // so the next start can recognise it too
             rememberedAt = now;
@@ -188,7 +219,7 @@ final class Strip {
             return;
         }
         String host = prefs.getString("host", null);
-        if (socket == null && (host == null || !open(host))) return; // unreachable: kept for next time
+        if (socket == null && (host == null || !open(host, KNOWN_MS))) return; // unreachable: kept for next time
         // The controller ignores commands that arrive straight after a burst of colours, and it fades
         // to a new colour over about a second: switched off (or read) mid-fade, it keeps the
         // half-way colour as its own. So: a pause, the owner's colour, then the whole fade.
@@ -240,16 +271,18 @@ final class Strip {
         in = null;
     }
 
-    private boolean open(String host) {
+    private boolean open(String host, int ms) {
         try {
             Socket s = new Socket();
-            s.connect(new InetSocketAddress(host, PORT), 1500);
-            s.setSoTimeout(1500);
+            s.connect(new InetSocketAddress(host, PORT), ms);
+            s.setSoTimeout(ms);
+            patience = ms;
             s.setTcpNoDelay(true);
             socket = s;
             out = s.getOutputStream();
             in = s.getInputStream();
             queriedAt = answeredAt = System.currentTimeMillis();
+            reaskAt = 0;
             return true;
         } catch (IOException e) {
             close();
@@ -279,7 +312,7 @@ final class Strip {
         if (!send(0x81, 0x8A, 0x8B)) return null;
         byte[] buf = new byte[256];
         int n = 0;
-        long end = System.currentTimeMillis() + 1500;
+        long end = System.currentTimeMillis() + patience;
         try {
             while (n < buf.length && System.currentTimeMillis() < end) {
                 int k;
@@ -318,13 +351,13 @@ final class Strip {
         String base = subnet();
         if (base == null) return null;
         AtomicReference<String> hit = new AtomicReference<>();
-        ExecutorService pool = Executors.newFixedThreadPool(32);
+        ExecutorService pool = Executors.newFixedThreadPool(64); // 4 rounds of at most 2 x SEARCH_MS
         for (int i = 1; i < 255; i++) {
             String host = base + i;
             pool.execute(() -> {
                 if (hit.get() != null) return;
                 Strip probe = new Strip();
-                if (probe.open(host)) {
+                if (probe.open(host, SEARCH_MS)) {
                     if (probe.status() != null) hit.compareAndSet(null, host);
                     probe.close();
                 }
@@ -345,21 +378,31 @@ final class Strip {
         prefs = null;
     }
 
+    /**
+     * The TV's /24 on the home network: Wi-Fi or Ethernet first. Tunnels are skipped: the DNS
+     * filter's VPN adds tun interfaces in 10.0.2.x, which came first in the list, and the strip
+     * was searched for there, in vain, for as long as the TV was on.
+     */
     private static String subnet() {
+        String other = null;
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback()) continue;
+                String name = ni.getName();
+                if (!ni.isUp() || ni.isLoopback() || ni.isPointToPoint()
+                        || name.startsWith("tun") || name.startsWith("ppp")) continue;
                 for (InetAddress a : Collections.list(ni.getInetAddresses())) {
                     if (a instanceof Inet4Address && a.isSiteLocalAddress()) {
                         String ip = a.getHostAddress();
-                        return ip.substring(0, ip.lastIndexOf('.') + 1);
+                        String base = ip.substring(0, ip.lastIndexOf('.') + 1);
+                        if (name.startsWith("wlan") || name.startsWith("eth")) return base;
+                        if (other == null) other = base;
                     }
                 }
             }
         } catch (IOException e) {
             Log.w(TAG, "no network: " + e);
         }
-        return null;
+        return other;
     }
 
     private static byte[] message(int... bytes) {

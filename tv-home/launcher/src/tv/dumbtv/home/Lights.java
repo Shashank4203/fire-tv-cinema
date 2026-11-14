@@ -558,76 +558,92 @@ public final class Lights extends NotificationListenerService {
         sentAt = now;
     }
 
-    /** Receives the phone's colours, for as long as the process lives. */
+    /**
+     * Receives the phone's colours, for as long as the process lives. A network error doesn't end
+     * it: on a congested Wi-Fi the "here" reply once failed, which ended this thread, and the TV
+     * ignored the phone until the app restarted. Now a failed reply is skipped and any other
+     * error reopens the socket 5 s later.
+     */
     private static void listen() {
         Thread t = new Thread(() -> {
-            try (DatagramSocket s = new DatagramSocket(LIVE_PORT)) {
-                byte[] buf = new byte[2048]; // the strip's matching runs to some 600
-                byte[] here = "here".getBytes(StandardCharsets.US_ASCII);
-                DatagramPacket p = new DatagramPacket(buf, buf.length);
-                long hereAt = 0;
-                while (true) {
-                    p.setLength(buf.length);
-                    s.receive(p);
-                    String msg = new String(buf, 0, p.getLength(), StandardCharsets.UTF_8).trim();
-                    String[] m = msg.split(" ");
-                    if (m.length < 2 || !"lightcam".equals(m[0])) continue;
-                    phone = p.getAddress();
-                    // The router hands out addresses afresh now and then. The phone sends to the
-                    // address it last heard "here" from, and when it hears nothing for a while it
-                    // says "hello" to every address on the Wi-Fi; answered at once.
-                    long now = SystemClock.elapsedRealtime();
-                    if (now - hereAt > HERE_MS || "hello".equals(m[1])) {
-                        hereAt = now;
-                        s.send(new DatagramPacket(here, here.length, p.getAddress(), PHONE_PORT));
-                    }
-                    if ("hello".equals(m[1])) continue;
-                    if ("title".equals(m[1])) { // what's playing, read off the screen (Continue watching)
-                        Watching.cameraSaw(msg.substring("lightcam title".length()));
-                        continue;
-                    }
-                    if ("calibrated".equals(m[1]) || "failed".equals(m[1])) {
-                        calibration = msg.substring("lightcam ".length());
-                        continue;
-                    }
-                    if ("colour".equals(m[1]) || "colourfail".equals(m[1])) {
-                        colourCalibration = msg.substring("lightcam ".length());
-                        continue;
-                    }
-                    if ("strip".equals(m[1]) || "stripfail".equals(m[1])) {
-                        stripCalibration = msg.substring("lightcam ".length());
-                        continue;
-                    }
-                    if ("scal".equals(m[1]) || "scalfail".equals(m[1])) {
-                        soundCalibration = msg.substring("lightcam ".length());
-                        continue;
-                    }
-                    try {
-                        if (m.length == 6 || m.length == 7) {
-                            liveColour = rgb(byteOf(m[1]), byteOf(m[2]), byteOf(m[3]));
-                            int b = Integer.parseInt(m[4]);
-                            liveBeat = b < 0 ? -1f : Math.min(100, b) / 100f;
-                            liveLevel = Math.max(0, Math.min(100, Integer.parseInt(m[5]))) / 100f;
-                            int gr = m.length == 7 ? Integer.parseInt(m[6]) : -2;
-                            liveGroove = gr < -1 ? -2f : gr < 0 ? -1f : Math.min(100, gr) / 100f;
-                            liveAt = SystemClock.elapsedRealtime();
-                        } else if (m.length == 4 || m.length == 5) { // an older phone app: colour pre-dimmed
-                            liveColour = rgb(byteOf(m[1]), byteOf(m[2]), byteOf(m[3]));
-                            liveBeat = -1f;
-                            liveLevel = 1f;
-                            liveGroove = -2f;
-                            liveAt = SystemClock.elapsedRealtime();
-                        }
-                    } catch (NumberFormatException ignored) {
-                        // not ours
-                    }
+            while (true) {
+                try (DatagramSocket s = new DatagramSocket(LIVE_PORT)) {
+                    receive(s);
+                } catch (IOException e) {
+                    Log.w(TAG, "can't listen for the phone on UDP " + LIVE_PORT + ": " + e + "; again in 5 s");
                 }
-            } catch (IOException e) {
-                Log.w(TAG, "can't listen for the phone on UDP " + LIVE_PORT + ": " + e);
+                SystemClock.sleep(5000);
             }
         }, "lightcam");
         t.setDaemon(true);
         t.start();
+    }
+
+    private static void receive(DatagramSocket s) throws IOException {
+        byte[] buf = new byte[2048]; // the strip's matching runs to some 600
+        byte[] here = "here".getBytes(StandardCharsets.US_ASCII);
+        DatagramPacket p = new DatagramPacket(buf, buf.length);
+        long hereAt = 0;
+        while (true) {
+            p.setLength(buf.length);
+            s.receive(p);
+            String msg = new String(buf, 0, p.getLength(), StandardCharsets.UTF_8).trim();
+            String[] m = msg.split(" ");
+            if (m.length < 2 || !"lightcam".equals(m[0])) continue;
+            phone = p.getAddress();
+            // The router hands out addresses afresh now and then. The phone sends to the
+            // address it last heard "here" from, and when it hears nothing for a while it
+            // says "hello" to every address on the Wi-Fi; answered at once.
+            long now = SystemClock.elapsedRealtime();
+            if (now - hereAt > HERE_MS || "hello".equals(m[1])) {
+                hereAt = now;
+                try {
+                    s.send(new DatagramPacket(here, here.length, p.getAddress(), PHONE_PORT));
+                } catch (IOException e) {
+                    Log.w(TAG, "couldn't answer the phone: " + e); // tried again in HERE_MS
+                }
+            }
+            if ("hello".equals(m[1])) continue;
+            if ("title".equals(m[1])) { // what's playing, read off the screen (Continue watching)
+                Watching.cameraSaw(msg.substring("lightcam title".length()));
+                continue;
+            }
+            if ("calibrated".equals(m[1]) || "failed".equals(m[1])) {
+                calibration = msg.substring("lightcam ".length());
+                continue;
+            }
+            if ("colour".equals(m[1]) || "colourfail".equals(m[1])) {
+                colourCalibration = msg.substring("lightcam ".length());
+                continue;
+            }
+            if ("strip".equals(m[1]) || "stripfail".equals(m[1])) {
+                stripCalibration = msg.substring("lightcam ".length());
+                continue;
+            }
+            if ("scal".equals(m[1]) || "scalfail".equals(m[1])) {
+                soundCalibration = msg.substring("lightcam ".length());
+                continue;
+            }
+            try {
+                if (m.length == 6 || m.length == 7) {
+                    liveColour = rgb(byteOf(m[1]), byteOf(m[2]), byteOf(m[3]));
+                    int b = Integer.parseInt(m[4]);
+                    liveBeat = b < 0 ? -1f : Math.min(100, b) / 100f;
+                    liveLevel = Math.max(0, Math.min(100, Integer.parseInt(m[5]))) / 100f;
+                    int gr = m.length == 7 ? Integer.parseInt(m[6]) : -2;
+                    liveGroove = gr < -1 ? -2f : gr < 0 ? -1f : Math.min(100, gr) / 100f;
+                    liveAt = SystemClock.elapsedRealtime();
+                } else if (m.length == 4 || m.length == 5) { // an older phone app: colour pre-dimmed
+                    liveColour = rgb(byteOf(m[1]), byteOf(m[2]), byteOf(m[3]));
+                    liveBeat = -1f;
+                    liveLevel = 1f;
+                    liveGroove = -2f;
+                    liveAt = SystemClock.elapsedRealtime();
+                }
+            } catch (NumberFormatException ignored) {
+                // not ours
+            }
+        }
     }
 
     private static int byteOf(String s) {
